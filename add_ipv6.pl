@@ -48,18 +48,19 @@ foreach my $line (split(/\n/, $ifconf)) {
 }
 
 
-if (-e "server.conf.preipv6") {
-    print("server.conf.preipv6 already exists. Already ran this script?\n");
+if (-e "/etc/openvpn/server.conf.preipv6") {
+    print("/etc/openvpn/server.conf.preipv6 already exists. Already ran this script?\n");
 } else {
-    copy("server.conf", "server.conf.preipv6");
+    copy("/etc/openvpn/server.conf", "/etc/openvpn/server.conf.preipv6");
 
-    if (open(my $fp, ">>", "server.conf")) {
+    if (open(my $fp, ">>", "/etc/openvpn/server.conf")) {
         printf($fp "server-ipv6 %s::/64\n",              $netprefix);
         printf($fp "push \"route-ipv6 %s:80::/112\"\n",  $netprefix);
         printf($fp "push \"dhcp6-option DNS %s:80::1\"", $netprefix);
         printf($fp "tun-ipv6\n");
         printf($fp "proto udp6\n");
-
+	printf($fp "log \"/etc/openvpn/openvpn.log\"\n");
+	
         #https://community.openvpn.net/openvpn/wiki/IPv6
         # To redirect all Internet-bound traffic, use the current 
         # allocated public IP space like this:
@@ -79,14 +80,15 @@ open(my $fp, "<", "/etc/default/openvpn") || die("can't open /etc/default/openvp
 my @lines = readline($fp);
 close($fp);
 
-if (open(my $fp, ">", "openvpn")) {
+if (open(my $fp, ">", "/etc/default/openvpn")) {
     foreach my $line (@lines) {
         $line =~ s/#AUTOSTART="all"/AUTOSTART="all"/;
         print($fp $line);
     }
 }
 # reload systcl changes just made.
-#system("systemctl daemon-reload");
+print("reloadeing deamon\n");
+system("systemctl daemon-reload");
 
 
 
