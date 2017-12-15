@@ -2,7 +2,12 @@
 
 action="$1"
 addr="$2"
-pubif="<server wan interface>"
+
+# the server wan interface ens3, eth0... will be inserted by add_ipv6 script.
+pubif="__server_wan_interface"
+
+
+echo setting up ndp proxy action: $action addr: $addr pubif: $pubif
 
 if [[ "${addr//:/}" == "$addr" ]]
 then
@@ -12,6 +17,7 @@ fi
 
 case "$action" in
     add)
+	echo  ip -6 neigh add proxy ${addr} dev ${pubif}
         ip -6 neigh add proxy ${addr} dev ${pubif}
         ;;
     update)
