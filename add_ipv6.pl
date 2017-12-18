@@ -6,7 +6,19 @@ use File::Copy;
 use Cwd 'abs_path';
 use File::Basename;
 
-my $ifconf = `ifconfig -a`;
+# this script and comments assume you've run:
+# apt install -y openvpn easy-rsa emacs24 traceroute
+# wget https://git.io/vpn -O openvpn-install.sh
+# bash ./openvpn-install.sh
+
+# you'll probably want firewall protection. ufw is available on ubuntu.
+# some commands/settings you might consider.
+# sudo ufw allow ssh/tcp  # otherwise you won't be able to ssh to your server
+# sudo ufw allow 1194/udp # otherwise you won't be able to initiate contact with your vpn
+#                         # even without ipv6 support, you have to have this.
+
+# this is a good site on ufw
+# https://wiki.ubuntu.com/UncomplicatedFirewall
 
 # I'm not a networking expert. I just wanted a openvpn server that handled ipv6.
 # to understand what's going on here, it really helps to understand ipv6 a little.
@@ -27,6 +39,8 @@ my $ifconf = `ifconfig -a`;
 my $intf;
 my $netprefix;
 my $relevant;
+
+my $ifconf = `ifconfig -a`;
 foreach my $line (split(/\n/, $ifconf)) {
     #print($line, "\n");
     chomp $line;
@@ -56,6 +70,7 @@ foreach my $line (split(/\n/, $ifconf)) {
     # I take the first one. There are usually
     # more, but the first one is the correct one on my machines.
     if (defined($foundipv6) && !defined($netprefix)) {
+        if (!($line =~ /Scope:Global/)) { next; }
         my @foundipv6 = split(/:/, $foundipv6);
         $netprefix = join(":", @foundipv6[0..3]);
         printf("using ipv6 %s\n", $netprefix);
@@ -242,6 +257,43 @@ if (open($fp, "<", $proxy_script)) {
 } else {
     printf("unable to open file %s\n", $proxy_script);
 }
+
+# up to here, the code and comments assume you've turned the
+# firewall off via:
+# ufw disable
+
+# if you do:
+#    ufw allow 1194/udp
+# things sort of work. pinging to google works
+# ping6 google.com
+# traceroute -6 google.com
+# does not work.
+
+# the code below is basically a copy of the commands on this site:
+# https://www.techgrube.de/tutorials/openvpn-server-mit-ipv4-und-ipv6
+
+system("iptables -t nat -A POSTROUTING -o $intf -j MASQUERADE");
+system("ip6tables -A INPUT -i lo -j ACCEPT");
+system("ip6tables -A INPUT -m conntrack --ctstate INVALID -j DROP");
+system("ip6tables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT");
+system("ip6tables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT");
+system("ip6tables -A INPUT -p ipv6-icmp -j ACCEPT");
+system("ip6tables -A FORWARD -p ipv6-icmp -j ACCEPT");
+system("ip6tables -A FORWARD -s ${netprefix}::/64 -j ACCEPT");
+system("ip6tables -A INPUT -j REJECT");
+
+system("iptables-save > /etc/iptables.vpn.rules");
+system("ip6tables-save > /etc/ip6tables.vpn.rules");
+
+open($fp, ">", "/etc/network/if-up.d/iptables");
+print($fp <<EOF);
+#!/bin/sh
+iptables-restore < /etc/iptables.vpn.rules
+ip6tables-restore < /etc/ip6tables.vpn.rules
+EOF
+close($fp);
+system("chmod +x /etc/network/if-up.d/iptables");
+
 
 
 # end
